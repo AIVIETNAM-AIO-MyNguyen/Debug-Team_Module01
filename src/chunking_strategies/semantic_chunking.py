@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 import uuid
 from langchain_experimental.text_splitter import SemanticChunker
-# Recommended package for modern LangChain installations
 from langchain_ollama import OllamaEmbeddings 
 
 @dataclass
