@@ -1,3 +1,6 @@
 # Ignore local environment variable files
 .env
 __pycache__
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
