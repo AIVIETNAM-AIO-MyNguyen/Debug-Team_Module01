@@ -15,8 +15,8 @@ class Chunk:
 def chunk_with_langchain(
     text: str, 
     doc_id: str, 
-    size: int = 512, 
-    overlap: int = 102
+    size: int = 1024, 
+    overlap: int = 204
 ) -> list[Chunk]:
     
     # Passing size, overlap, and the vital index flag into **kwargs
