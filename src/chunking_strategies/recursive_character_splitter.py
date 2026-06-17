@@ -3,6 +3,7 @@ from typing import Any, Literal
 import uuid
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+# ── Dataclass ─────────────────────────────────────────────────────────────────
 @dataclass
 class Chunk:
     chunk_id: str       
@@ -12,6 +13,7 @@ class Chunk:
     end_char: int       
     strategy: str       
 
+# ── Chunker ───────────────────────────────────────────────────────────────────
 def chunk_with_langchain(
     text: str, 
     doc_id: str, 

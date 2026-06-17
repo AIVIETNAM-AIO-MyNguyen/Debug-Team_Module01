@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import uuid
 
+# ── Dataclass ─────────────────────────────────────────────────────────────────
 @dataclass
 class Chunk:
     chunk_id: str       
@@ -10,6 +11,8 @@ class Chunk:
     end_char: int       
     strategy: str   
 
+
+# ── Chunker ───────────────────────────────────────────────────────────────────
 def chunk_1024(text: str, doc_id: str, size: int = 1024, overlap: int = 204) -> list[Chunk]:
     chunks = []
     text_len = len(text)
