@@ -1,6 +1,7 @@
 # Ignore local environment variable files
 .env
 *.parquet
+.venv/
 __pycache__
 *.sqlite3-wal
 *.sqlite3-shm
