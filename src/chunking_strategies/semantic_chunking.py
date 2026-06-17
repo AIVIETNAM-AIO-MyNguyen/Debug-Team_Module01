@@ -14,7 +14,6 @@ DEVICE = torch.device(
     else "cpu"
 )
 
-# Load once at module level (same pattern as your ingestion script)
 _st_model = SentenceTransformer(MODEL_NAME, device=DEVICE) # type: ignore
 if DEVICE.type == "cuda":
     _st_model = _st_model.half()
