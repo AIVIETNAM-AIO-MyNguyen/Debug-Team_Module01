@@ -14,9 +14,6 @@ from ragas.metrics import faithfulness, answer_relevance, AnswerCorrectness
 from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
-from core.chunkers import DocumentChunker, Chunk
-from core.cache_manager import LocalCacheManager
-from core.index_manager import IndexManager
 from core.query_transforms import QueryTransformer
 from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
@@ -103,19 +100,27 @@ class RagEvaluator:
                         }
         return questions_dict
 
-    def _get_top_5_combinations(self) -> list:
-        """Lấy top 5 pipeline tối ưu nhất từ file log log."""
+    def _get_top_5_pipelines_with_configs(self) -> list:
+        """
+        Lấy top 5 pipeline tối ưu nhất kèm theo toàn bộ tham số cấu hình của chúng
+        từ file log sàng lọc (screening log).
+        """
         df = pd.read_csv(self.metrics_log_file)
         df['combination_score'] = (df['hit_rate_at_5'] + df['recall_at_5'] + df['mrr_at_5'] + df['ndcg_at_5']) / 4
-        grouped = df.groupby('pipeline_id')['combination_score'].mean().reset_index()
-        return grouped.sort_values(by='combination_score', ascending=False).head(5)['pipeline_id'].tolist()
+        
+        # Nhóm theo các cột cấu hình cấu trúc hệ thống để tính điểm trung bình
+        config_cols = ['pipeline_id', 'pre_retrieval', 'retrieval', 'chunking', 'index_structure', 'post_retrieval']
+        grouped = df.groupby(config_cols)['combination_score'].mean().reset_index()
+        
+        # Sắp xếp lấy Top 5 và chuyển đổi thành danh sách từ điển (list of dicts)
+        top_5_df = grouped.sort_values(by='combination_score', ascending=False).head(5)
+        return top_5_df.to_dict(orient='records')
 
-    def run_actual_rag_pipeline(self, q_id: str, question_text: str, config: dict) -> tuple:
+    def run_rag_pipeline(self, q_id: str, question_text: str, config: dict) -> tuple:
         """
-        Trích xuất ngữ cảnh và sử dụng Qwen Local để tạo câu trả lời.
+        PHƯƠNG THỨC CHÍNH THỨC: Trích xuất ngữ cảnh dựa trên cấu hình tự động trích xuất từ log.
         """
         # 1. Tiền xử lý Query (Query Transformation)
-        # Sử dụng cấu hình 'pre_retrieval' tương ứng với pipeline hiện tại
         queries = self.query_tf.execute_transform(q_id, question_text, config["pre_retrieval"])
         
         # 2. Định tuyến chiến lược Tìm kiếm dữ liệu (Retrieval)
@@ -141,14 +146,12 @@ class RagEvaluator:
         else:
             processed = retrieved[:5]
             
-        # 4. Trích xuất nội dung văn bản thuần túy làm ngữ cảnh nền cho Ragas và Qwen
+        # 4. Trích xuất nội dung văn bản làm ngữ cảnh nền
         context_texts = [res["metadata"]["text"] for res in processed if "metadata" in res and "text" in res["metadata"]]
-        
-        # Phòng trường hợp pipeline không tìm ra context nào phù hợp
         if not context_texts:
             context_texts = ["Không tìm thấy ngữ cảnh phù hợp cho câu hỏi này."]
 
-        # 5. Đóng gói Prompt gửi sang Qwen Local để sinh câu trả lời
+        # 5. Sinh câu trả lời bằng Qwen Local
         context_str = "\n".join(context_texts)
         prompt = f"Context:\n{context_str}\n\nQuestion: {question_text}\n\nAnswer:"
         
@@ -158,17 +161,18 @@ class RagEvaluator:
         return generated_answer, context_texts
 
     def run_evaluation(self):
-        """Tiến trình chạy chính và xử lý hạn ngạch."""
+        """Tiến trình chạy đánh giá chính."""
         try:
-            top_5_pipelines = self._get_top_5_combinations()
-            print(f"Top 5 Combination được chọn: {top_5_pipelines}")
+            # Tự động lấy danh sách Top 5 kèm theo config đi kèm trong file CSV sàng lọc
+            top_5_pipelines = self._get_top_5_pipelines_with_configs()
+            print(f"Top 5 Combination được chọn: {[p['pipeline_id'] for p in top_5_pipelines]}")
         except Exception as e:
-            print(f"Lỗi đọc file log: {e}")
+            print(f"Lỗi đọc file log tại {self.metrics_log_file}: {e}")
             return
 
         questions_pool = self._load_questions_from_jsonl()
         if not questions_pool:
-            print("Không có câu hỏi nào được tải. Kết thúc.")
+            print(f"Không có câu hỏi nào được tải từ {self.jsonl_path}. Kết thúc.")
             return
 
         if os.path.exists(self.result_log_file):
@@ -183,8 +187,11 @@ class RagEvaluator:
         df_metrics = pd.read_csv(self.metrics_log_file)
         unique_question_ids = df_metrics['question_id'].unique().tolist()
 
-        for pipeline_id in top_5_pipelines:
+        # Duyệt qua từng cấu hình pipeline trong nhóm Top 5
+        for config in top_5_pipelines:
+            pipeline_id = config['pipeline_id']
             print(f"\n>>> ĐANG CHẠY EVALUATION CHO PIPELINE: {pipeline_id}")
+            print(f"    [Cấu hình] Pre: {config['pre_retrieval']} | Retrieval: {config['retrieval']} | Chunking: {config['chunking']} | Post: {config['post_retrieval']}")
             
             for q_id in unique_question_ids:
                 is_evaluated = not df_checkpoint[
@@ -207,7 +214,8 @@ class RagEvaluator:
                 
                 while True:
                     try:
-                        answer, contexts = self.run_qwen_rag_pipeline_ollama(pipeline_id, question_text)
+                        # Truyền trực tiếp từ điển 'config' chứa đầy đủ thông tin hàng vào hàm pipeline
+                        answer, contexts = self.run_rag_pipeline(q_id, question_text, config)
                         
                         sample_data = {
                             "question": [question_text],
@@ -244,18 +252,13 @@ class RagEvaluator:
                     except Exception as error:
                         error_msg = str(error).lower()
                         
-                        # ĐOẠN KIỂM TRA CHẶN LỖI 1500 RPD (HẠN NGẠCH NGÀY CỦA GOOGLE)
                         if "quota" in error_msg and "day" in error_msg:
                             print("\n[CẢNH BÁO NGHẼN HỆ THỐNG]: Bạn đã dùng hết 1,500 requests ngày của tài khoản Google Free!")
                             print("Hệ thống tiến hành kích hoạt chế độ NGỦ ĐÔNG TRONG 24 GIỜ để chờ reset quota...")
                             print("⚠️ Xin vui lòng KHÔNG tắt chương trình. Tiến trình sẽ tự động chạy tiếp vào ngày mai.")
-                            time.sleep(86400) # Sleep đúng 24 tiếng đồng hồ
+                            time.sleep(86400)
                             print("--- Hệ thống đã thức dậy! Đang thử lại câu hỏi vừa rồi... ---")
-                            # Không có lệnh break ở đây, vòng lặp 'while True' sẽ chạy lại câu hỏi này với Quota mới
-                        
-                        # Nếu là lỗi nghẽn phút (RPM) thông thường hoặc mất mạng tạm thời
                         else:
                             print(f" [Lỗi kết nối / Nghẽn phút]: {error}")
                             print("Tạm nghỉ 60 giây để hệ thống hồi phục...")
                             time.sleep(60)
-                            # Tiếp tục vòng lặp để thử lại
