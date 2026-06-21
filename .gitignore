@@ -7,3 +7,6 @@ __pycache__
 *.sqlite3-shm
 *.sqlite3-journal
 *.sqlite3
+
+.DS_Store
+data/processed/embeddings/

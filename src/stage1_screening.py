@@ -1,6 +1,9 @@
 import pandas as pd
 
 from retrievers import DenseRetriever
+from bm25_retriever import BM25Retriever
+from hybrid_retriever import HybridRetriever
+
 from metrics import (
     hit_rate_at_k,
     recall_at_k,
@@ -19,70 +22,119 @@ collections = [
     "c_sem"
 ]
 
+retrieval_methods = [
+    "dense",
+    "bm25",
+    "hybrid"
+]
+
 results_log = []
 
 for collection_name in collections:
 
-    retriever = DenseRetriever(
-        chroma_path="data/processed/embeddings",
-        collection_name=collection_name
-    )
+    print(f"\n=== {collection_name} ===")
 
-    total_questions = 0
+    for retrieval_method in retrieval_methods:
 
-    total_hitrate = 0
-    total_recall = 0
-    total_mrr = 0
-    total_ndcg = 0
+        print(f"Running {retrieval_method}...")
 
-    for _, row in df.iterrows():
+        if retrieval_method == "dense":
 
-        gt_chunk_ids = row["ground_truth_chunk_ids"][
-            collection_name
-        ]
+            retriever = DenseRetriever(
+                chroma_path="data/processed/embeddings",
+                collection_name=collection_name
+            )
 
-        if len(gt_chunk_ids) == 0:
-            continue
+        elif retrieval_method == "bm25":
 
-        question = row["question"]
+            retriever = BM25Retriever(
+                chroma_path="data/processed/embeddings",
+                collection_name=collection_name
+            )
 
-        results = retriever.search(
-            query=question,
-            k=5
-        )
+        else:
 
-        retrieved_ids = results["ids"][0]
+            retriever = HybridRetriever(
+                chroma_path="data/processed/embeddings",
+                collection_name=collection_name
+            )
 
-        total_hitrate += hit_rate_at_k(
-            retrieved_ids,
-            gt_chunk_ids
-        )
+        total_questions = 0
 
-        total_recall += recall_at_k(
-            retrieved_ids,
-            gt_chunk_ids
-        )
+        total_hitrate = 0
+        total_recall = 0
+        total_mrr = 0
+        total_ndcg = 0
 
-        total_mrr += mrr(
-            retrieved_ids,
-            gt_chunk_ids
-        )
+        for _, row in df.iterrows():
 
-        total_ndcg += ndcg_at_k(
-            retrieved_ids,
-            gt_chunk_ids
-        )
+            gt_chunk_ids = row["ground_truth_chunk_ids"][
+                collection_name
+            ]
 
-        total_questions += 1
+            if len(gt_chunk_ids) == 0:
+                continue
 
-    results_log.append({
-        "chunking": collection_name,
-        "retrieval": "dense",
-        "hitrate": total_hitrate / total_questions,
-        "recall": total_recall / total_questions,
-        "mrr": total_mrr / total_questions,
-        "ndcg": total_ndcg / total_questions
-    })
+            question = row["question"]
+
+            if retrieval_method == "dense":
+
+                results = retriever.search(
+                    query=question,
+                    k=5
+                )
+
+                retrieved_ids = results["ids"][0]
+
+            elif retrieval_method == "bm25":
+
+                results = retriever.search(
+                    question,
+                    k=5
+                )
+
+                retrieved_ids = [
+                    r["chunk_id"]
+                    for r in results
+                ]
+
+            else:
+
+                retrieved_ids = retriever.search(
+                    question,
+                    k=5
+                )
+
+            total_hitrate += hit_rate_at_k(
+                retrieved_ids,
+                gt_chunk_ids
+            )
+
+            total_recall += recall_at_k(
+                retrieved_ids,
+                gt_chunk_ids
+            )
+
+            total_mrr += mrr(
+                retrieved_ids,
+                gt_chunk_ids
+            )
+
+            total_ndcg += ndcg_at_k(
+                retrieved_ids,
+                gt_chunk_ids
+            )
+
+            total_questions += 1
+
+        results_log.append({
+            "chunking": collection_name,
+            "retrieval": retrieval_method,
+            "hitrate": total_hitrate / total_questions,
+            "recall": total_recall / total_questions,
+            "mrr": total_mrr / total_questions,
+            "ndcg": total_ndcg / total_questions
+        })
 
 results_df = pd.DataFrame(results_log)
 
@@ -91,5 +143,11 @@ results_df.to_csv(
     index=False
 )
 
+print("\n========================")
+print("FINAL RESULTS")
+print("========================")
 print(results_df)
-print("\nSaved -> results/stage1_screening_logs.csv")
+
+print(
+    "\nSaved -> results/stage1_screening_logs.csv"
+)
