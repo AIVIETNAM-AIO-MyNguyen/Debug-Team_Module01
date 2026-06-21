@@ -1,3 +1,21 @@
+# =====================================================================
+# ĐOẠN CODE ĐÓNG THẾ (MONKEY PATCHING)
+# =====================================================================
+import sys
+from types import ModuleType
+
+# 1. Tự tạo cấu trúc module giả lập trong bộ nhớ Python độc lập
+mock_vertex_module = ModuleType("langchain_community.chat_models.vertexai")
+mock_vertex_module.ChatVertexAI = None  # Gán bằng None để Ragas không bị crash khi import
+
+mock_llms_module = ModuleType("langchain_community.llms")
+mock_llms_module.VertexAI = None  # Gán bằng None dự phòng dòng tiếp theo của Ragas
+
+# 2. Ép hệ thống đăng ký các đường dẫn giả này vào danh sách quản lý module toàn cục
+sys.modules["langchain_community.chat_models.vertexai"] = mock_vertex_module
+sys.modules["langchain_community.llms"] = mock_llms_module
+# =====================================================================
+
 import os
 import time
 import json
@@ -5,15 +23,25 @@ import pandas as pd
 from datasets import Dataset
 from dotenv import load_dotenv
 
-from ragas import evaluate
+from ragas import evaluate, RunConfig
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings.base import LangchainEmbeddingsWrapper
-from ragas.metrics import faithfulness, answer_relevance, AnswerCorrectness
+from ragas.metrics import faithfulness, answer_relevancy, AnswerCorrectness
 
 # THƯ VIỆN KẾT NỐI VỚI LOCAL OLLAMA VÀ GOOGLE GEMINI
 from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
+# Lấy đường dẫn tuyệt đối của thư mục 'src' dựa vào vị trí file stage2.py
+current_dir = os.path.dirname(os.path.abspath(__file__))  # Đường dẫn đến src/evaluation
+src_dir = os.path.dirname(current_dir)                    # Đường dẫn đến src/
+
+# Python phải nhìn vào bên trong thư mục 'src' này để tìm các module con
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+from core.cache_manager import LocalCacheManager
+from core.index_manager import IndexManager
 from core.query_transforms import QueryTransformer
 from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
@@ -40,19 +68,34 @@ class RagEvaluator:
             
         os.environ["GOOGLE_API_KEY"] = gemini_key
         
-        # Cấu hình đường dẫn hệ thống
-        self.jsonl_path = jsonl_path
-        self.metrics_log_file = metrics_log_file
-        self.result_log_file = result_log_file
+        # Tìm đường dẫn gốc của dự án
+        project_root = os.path.dirname(src_dir)  # Thư mục gốc project
+
+        # Cấu hình đường dẫn và delay
+        self.jsonl_path = os.path.join(project_root, jsonl_path)
+        self.metrics_log_file = os.path.join(project_root, metrics_log_file)
+        self.result_log_file = os.path.join(project_root, result_log_file)
         self.delay_requests = delay_requests
         
         # Khởi tạo các mô hình và cấu hình Ragas
         self._init_models()
         self._setup_metrics()
 
-        # Khời tạo các phương thức retrieval
-        self.query_tf = QueryTransformer()
-        self.retriever = ModularRetriever()
+        # Tạo cache và QueryTransformer
+        cache_file_path = os.path.join(project_root, "data/pre_retrieval_cache.json")
+        self.cache_manager = LocalCacheManager(cache_path=cache_file_path)
+        self.query_tf = QueryTransformer(cache_manager=self.cache_manager)
+
+        # Tạo index_manager và ModularRetriever
+        self.index_manager = IndexManager()
+        chroma_path = os.path.join(project_root, "data/processed/embeddings")
+        print("--- Đang kết nối và khởi tạo cấu trúc ChromaDB ---")
+        success = self.index_manager.init_chroma(path=chroma_path)
+        if not success:
+            print(f"Cảnh báo: Không thể khởi tạo ChromaDB tại {chroma_path}. Kiểm tra lại thư mục dữ liệu.")
+        self.retriever = ModularRetriever(index_manager=self.index_manager)
+
+        # Tạo PostProcessor
         self.post_proc = PostProcessor()
 
     def _init_models(self):
@@ -62,24 +105,15 @@ class RagEvaluator:
 
         print("--- Khởi tạo mô hình Google Gemini cho Ragas ---")
         self.gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-        self.gemini_emb = GoogleGenerativeAIEmbeddings(model="text-embedding-04s")
+        self.gemini_emb = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 
         self.ragas_gemini_llm = LangchainLLMWrapper(self.gemini_llm)
         self.ragas_gemini_emb = LangchainEmbeddingsWrapper(self.gemini_emb)
 
     def _setup_metrics(self):
         """Cấu hình các metric gán cho Gemini."""
-        faithfulness.llm = self.ragas_gemini_llm
-        
-        self.answer_correctness = AnswerCorrectness(
-            llm=self.ragas_gemini_llm, 
-            embeddings=self.ragas_gemini_emb
-        )
-        
-        answer_relevance.llm = self.ragas_gemini_llm
-        answer_relevance.embeddings = self.ragas_gemini_emb  
-
-        self.metrics = [faithfulness, answer_relevance, self.answer_correctness]
+        self.answer_correctness = AnswerCorrectness()
+        self.metrics = [faithfulness, answer_relevancy, self.answer_correctness]
 
     def _load_questions_from_jsonl(self) -> dict:
         """Đọc file JSONL thành Dictionary để tra cứu bằng question_id."""
@@ -180,7 +214,7 @@ class RagEvaluator:
         else:
             df_checkpoint = pd.DataFrame(columns=[
                 "pipeline_id", "question_id", "question", "contexts", "answer", "ground_truth", 
-                "faithfulness", "answer_relevance", "answer_correctness"
+                "faithfulness", "answer_relevancy", "answer_correctness"
             ])
             df_checkpoint.to_csv(self.result_log_file, index=False)
 
@@ -225,11 +259,18 @@ class RagEvaluator:
                         }
                         dataset = Dataset.from_dict(sample_data)
                         
-                        score = evaluate(dataset, metrics=self.metrics)
+                        config_ragas = RunConfig(max_workers=1, timeout=180)
+                        score = evaluate(
+                            dataset, 
+                            metrics=self.metrics, 
+                            llm=self.ragas_gemini_llm,
+                            embeddings=self.ragas_gemini_emb,
+                            run_config=config_ragas
+                        )
                         
-                        f_score = score.get("faithfulness", 0.0)
-                        ar_score = score.get("answer_relevance", 0.0)
-                        ac_score = score.get("answer_correctness", 0.0)
+                        f_score = score.scores[0].get("faithfulness", 0.0) if score.scores else 0.0
+                        ar_score = score.scores[0].get("answer_relevancy", 0.0) if score.scores else 0.0
+                        ac_score = score.scores[0].get("answer_correctness", 0.0) if score.scores else 0.0
                         
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
@@ -239,7 +280,7 @@ class RagEvaluator:
                             "answer": answer,
                             "ground_truth": ground_truth_answer,
                             "faithfulness": f_score,
-                            "answer_relevance": ar_score,
+                            "answer_relevancy": ar_score,
                             "answer_correctness": ac_score
                         }])
                         
@@ -262,3 +303,26 @@ class RagEvaluator:
                             print(f" [Lỗi kết nối / Nghẽn phút]: {error}")
                             print("Tạm nghỉ 60 giây để hệ thống hồi phục...")
                             time.sleep(60)
+
+def main():
+    print("=========================================================")
+    print("   BẮT ĐẦU HỆ THỐNG ĐÁNH GIÁ RAG (RAGAS + LOCAL QWEN)    ")
+    print("=========================================================")
+
+    # 1. Cấu hình các đường dẫn tương ứng với cấu trúc dự án của bạn
+    INPUT_QUESTIONS_JSONL = "data/processed/questions/test_questions.jsonl"
+    STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs.csv"
+    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_test.csv"
+
+    # 2. Khởi tạo đối tượng đánh giá# Đặt thời gian nghỉ lớn (15s) nếu bạn dùng tài khoản Gemini miễn phí (tránh lỗi 429 Resource Exhausted)
+    evaluator = RagEvaluator(
+        jsonl_path=INPUT_QUESTIONS_JSONL,
+        metrics_log_file=STAGE1_SCREENING_LOGS,
+        result_log_file=FINAL_RAGAS_REPORT,
+        delay_requests=15.0)
+    
+    # 3. Kích hoạt tiến trình chạy tự động
+    evaluator.run_evaluation()
+
+if __name__ == "__main__":
+    main()
