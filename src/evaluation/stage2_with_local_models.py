@@ -1,4 +1,4 @@
-import os
+import os, sys
 import time
 import json
 import pandas as pd
@@ -6,24 +6,49 @@ from datasets import Dataset
 from dotenv import load_dotenv
 
 from ragas import evaluate
-from ragas.llms import LangchainLLMWrapper
+from ragas.llms import _LangchainLLMWrapper
 from ragas.embeddings.base import LangchainEmbeddingsWrapper
-from ragas.metrics import faithfulness, answer_relevance, AnswerCorrectness
+from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
 
-# THƯ VIỆN KẾT NỐI VỚI LOCAL OLLAMA VÀ GOOGLE GEMINI
-from langchain_ollama import ChatOllama
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = PROJECT_ROOT / "src"
+
+sys.path.insert(0, str(SRC_ROOT))
 
 from core.query_transforms import QueryTransformer
 from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
+from core.cache_manager import LocalCacheManager
+from core.index_manager import IndexManager
+
+from langchain_ollama import ChatOllama
+'''
+Evaluation with GOOGLE GEMINI
+# THƯ VIỆN KẾT NỐI VỚI LOCAL OLLAMA VÀ GOOGLE GEMINI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+'''
+
+'''
+Evaluation with GLM + Ollama Embeddings
+from langchain_openai import ChatOpenAI
+from langchain_ollama import OllamaEmbeddings
+'''
+
+'''
+Evaluation with Local Ollama + Ollama Embeddings
+'''
+from langchain_ollama import ChatOllama
+from langchain_ollama import OllamaEmbeddings
 
 class RagEvaluator:
     def __init__(
         self, 
         jsonl_path: str = "data/processed/questions/questions.jsonl",
         metrics_log_file: str = "reports/stage1_screening_logs.csv",
-        result_log_file: str = "reports/ragas_evaluation_checkpoint.csv",
+        result_log_file: str = "reports/ragas_evaluation_checkpoint_local.csv",
         delay_requests: float = 12.0
     ):
         """
@@ -35,6 +60,7 @@ class RagEvaluator:
         
         # Lấy trực tiếp từ file .env và gán vào biến hệ thống mà Ragas/Google yêu cầu
         gemini_key = os.getenv("GOOGLE_GEMINI_API_KEY")
+        glm_key = os.getenv("GLM_API_KEY")
         if not gemini_key:
             raise ValueError("Lỗi: Không tìm thấy 'GOOGLE_GEMINI_API_KEY' trong file .env của bạn!")
             
@@ -51,8 +77,11 @@ class RagEvaluator:
         self._setup_metrics()
 
         # Khời tạo các phương thức retrieval
-        self.query_tf = QueryTransformer()
-        self.retriever = ModularRetriever()
+        self.cache_manager = LocalCacheManager()
+        self.query_tf = QueryTransformer(self.cache_manager)
+
+        self.index_manager = IndexManager()
+        self.retriever = ModularRetriever(self.index_manager) 
         self.post_proc = PostProcessor()
 
     def _init_models(self):
@@ -61,25 +90,43 @@ class RagEvaluator:
         self.qwen_llm = ChatOllama(model="qwen2.5:1.5b", temperature=0.2)
 
         print("--- Khởi tạo mô hình Google Gemini cho Ragas ---")
-        self.gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-        self.gemini_emb = GoogleGenerativeAIEmbeddings(model="text-embedding-04s")
+        # self.gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        # self.gemini_emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
-        self.ragas_gemini_llm = LangchainLLMWrapper(self.gemini_llm)
+        # self.ragas_gemini_llm = _LangchainLLMWrapper(self.gemini_llm)
+        # self.ragas_gemini_emb = LangchainEmbeddingsWrapper(self.gemini_emb)
+
+        self.gemini_llm = ChatOllama(
+            model="qwen3:8b",
+            temperature=0
+        )       
+
+        self.gemini_emb = OllamaEmbeddings(
+            model="nomic-embed-text"
+        )
+
+        self.ragas_gemini_llm = _LangchainLLMWrapper(self.gemini_llm)
         self.ragas_gemini_emb = LangchainEmbeddingsWrapper(self.gemini_emb)
 
     def _setup_metrics(self):
-        """Cấu hình các metric gán cho Gemini."""
-        faithfulness.llm = self.ragas_gemini_llm
-        
+        """Cấu hình các metric."""
+        self.faithfulness = Faithfulness()
+        self.faithfulness.llm = self.ragas_gemini_llm
+
+        self.answer_relevancy = AnswerRelevancy()
+        self.answer_relevancy.llm = self.ragas_gemini_llm
+        self.answer_relevancy.embeddings = self.ragas_gemini_emb
+
         self.answer_correctness = AnswerCorrectness(
-            llm=self.ragas_gemini_llm, 
+            llm=self.ragas_gemini_llm,
             embeddings=self.ragas_gemini_emb
         )
-        
-        answer_relevance.llm = self.ragas_gemini_llm
-        answer_relevance.embeddings = self.ragas_gemini_emb  
 
-        self.metrics = [faithfulness, answer_relevance, self.answer_correctness]
+        self.metrics = [
+            self.faithfulness,
+            self.answer_relevancy,
+            self.answer_correctness
+        ]
 
     def _load_questions_from_jsonl(self) -> dict:
         """Đọc file JSONL thành Dictionary để tra cứu bằng question_id."""
@@ -227,10 +274,11 @@ class RagEvaluator:
                         
                         score = evaluate(dataset, metrics=self.metrics)
                         
-                        f_score = score.get("faithfulness", 0.0)
-                        ar_score = score.get("answer_relevance", 0.0)
-                        ac_score = score.get("answer_correctness", 0.0)
-                        
+                        df = score.to_pandas()
+                        f_score = float(df["faithfulness"].iloc[0]) if df["faithfulness"].iloc[0] else 0.0
+                        ar_score = float(df["answer_relevancy"].iloc[0]) if df["answer_relevancy"].iloc[0] else 0.0
+                        ac_score = float(df["answer_correctness"].iloc[0]) if df["answer_correctness"].iloc[0] else 0.0
+
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
                             "question_id": q_id,
@@ -262,3 +310,14 @@ class RagEvaluator:
                             print(f" [Lỗi kết nối / Nghẽn phút]: {error}")
                             print("Tạm nghỉ 60 giây để hệ thống hồi phục...")
                             time.sleep(60)
+
+
+if __name__ == "__main__":
+    evaluator = RagEvaluator(
+        jsonl_path="data/processed/questions/questions.jsonl",
+        metrics_log_file="reports/stage1_screening_logs.csv",
+        result_log_file="reports/ragas_evaluation_checkpoint_local.csv",
+        delay_requests=12.0
+    )
+
+    evaluator.run_evaluation()
