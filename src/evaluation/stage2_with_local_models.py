@@ -5,7 +5,7 @@ import pandas as pd
 from datasets import Dataset
 from dotenv import load_dotenv
 
-from ragas import evaluate
+from ragas import evaluate, RunConfig
 from ragas.llms import _LangchainLLMWrapper
 from ragas.embeddings.base import LangchainEmbeddingsWrapper
 from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
@@ -24,7 +24,6 @@ from core.post_processors import PostProcessor
 from core.cache_manager import LocalCacheManager
 from core.index_manager import IndexManager
 
-from langchain_ollama import ChatOllama
 '''
 Evaluation with GOOGLE GEMINI
 # THƯ VIỆN KẾT NỐI VỚI LOCAL OLLAMA VÀ GOOGLE GEMINI
@@ -42,6 +41,7 @@ Evaluation with Local Ollama + Ollama Embeddings
 '''
 from langchain_ollama import ChatOllama
 from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 class RagEvaluator:
     def __init__(
@@ -101,8 +101,8 @@ class RagEvaluator:
             temperature=0
         )       
 
-        self.gemini_emb = OllamaEmbeddings(
-            model="nomic-embed-text"
+        self.gemini_emb = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
         self.ragas_gemini_llm = _LangchainLLMWrapper(self.gemini_llm)
@@ -272,12 +272,19 @@ class RagEvaluator:
                         }
                         dataset = Dataset.from_dict(sample_data)
                         
-                        score = evaluate(dataset, metrics=self.metrics)
+                        config_ragas = RunConfig(max_workers=1, timeout=180)
+                        score = evaluate(
+                            dataset,
+                            metrics=self.metrics,
+                            llm=self.ragas_gemini_llm,
+                            embeddings=self.ragas_gemini_emb,
+                            run_config=config_ragas
+                            )
                         
                         df = score.to_pandas()
-                        f_score = float(df["faithfulness"].iloc[0]) if df["faithfulness"].iloc[0] else 0.0
-                        ar_score = float(df["answer_relevancy"].iloc[0]) if df["answer_relevancy"].iloc[0] else 0.0
-                        ac_score = float(df["answer_correctness"].iloc[0]) if df["answer_correctness"].iloc[0] else 0.0
+                        f_score = float(df["faithfulness"].iloc[0]) if df["faithfulness"].iloc[0] != 'nan' else 0.0
+                        ar_score = float(df["answer_relevancy"].iloc[0]) if df["answer_relevancy"].iloc[0] != 'nan' else 0.0
+                        ac_score = float(df["answer_correctness"].iloc[0]) if df["answer_correctness"].iloc[0] != 'nan' else 0.0
 
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
