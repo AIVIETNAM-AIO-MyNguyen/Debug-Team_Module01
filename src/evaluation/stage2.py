@@ -289,8 +289,8 @@ class RagEvaluator:
             df_checkpoint.to_csv(self.result_log_file, index=False)
 
         # Tìm toàn bộ các câu hỏi được đánh giá ở stage 1
-        df_metrics = pd.read_csv(self.metrics_log_file)
-        unique_question_ids = df_metrics['question_id'].unique().tolist()
+        # df_metrics = pd.read_csv(self.metrics_log_file)
+        # unique_question_ids = df_metrics['question_id'].unique().tolist()
 
         # Duyệt qua từng cấu hình pipeline trong nhóm Top 5
         for config in top_5_pipelines:
@@ -299,7 +299,7 @@ class RagEvaluator:
             print(f">>> [Cấu hình] Pre: {config['pre_retrieval']} | Retrieval: {config['retrieval']} | Chunking: {config['chunking']} | Post: {config['post_retrieval']} <<<")
             
             # Duyệt qua toàn bộ các câu hỏi trong stage 1
-            for q_id in unique_question_ids:
+            for q_id, question_data in questions_pool.items():
                 is_evaluated = not df_checkpoint[
                     (df_checkpoint['pipeline_id'] == pipeline_id) & 
                     (df_checkpoint['question_id'] == q_id)
@@ -309,9 +309,9 @@ class RagEvaluator:
                     continue
                     
                 # Kiểm tra xem câu hỏi đó có trong bộ câu hỏi stage 2 không
-                question_data = questions_pool.get(q_id)
-                if not question_data:
-                    continue
+                # question_data = questions_pool.get(q_id)
+                # if not question_data:
+                #     continue
     
                 question_text = question_data["question"]
                 ground_truth_answer = question_data["ground_truth_answer"]
@@ -331,7 +331,7 @@ class RagEvaluator:
                         }
                         dataset = Dataset.from_dict(sample_data)
                         
-                        config_ragas = RunConfig(max_workers=1, timeout=180)
+                        config_ragas = RunConfig(max_workers=1, max_retries=2, max_wait=10, timeout=60)
                         score = evaluate(
                             dataset, 
                             metrics=self.metrics, 
@@ -344,6 +344,10 @@ class RagEvaluator:
                         ar_score = score.scores[0].get("answer_relevancy", 0.0) if score.scores else 0.0
                         ac_score = score.scores[0].get("answer_correctness", 0.0) if score.scores else 0.0
                         
+                        # Nếu tất cả các metric chính đều bị Ragas gán nhãn `nan` (do sập API ẩn bên trong)
+                        if pd.isna(f_score) or pd.isna(ar_score) or pd.isna(ac_score):
+                            raise Exception("ragas_all_nan_error: Toàn bộ điểm số trả về bị NAN do nghẽn token hệ thống.")
+
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
                             "question_id": q_id,
@@ -365,15 +369,15 @@ class RagEvaluator:
                     except Exception as error:
                         error_msg = str(error).lower()
                         
-                        if "quota" in error_msg and "day" in error_msg:
+                        if "tokens per day" in error_msg or "tpd" in error_msg or "rate_limit_exceeded" in error_msg:
                             print("\n=== [CẢNH BÁO NGHẼN HỆ THỐNG]: Bạn đã dùng hết requests ngày của tài khoản Groq Free!")
                             print("=== Hệ thống tiến hành kích hoạt chế độ NGỦ ĐÔNG TRONG 24 GIỜ để chờ reset quota... ===")
                             print("=== ⚠️ Xin vui lòng KHÔNG tắt chương trình. Tiến trình sẽ tự động chạy tiếp vào ngày mai. ===")
                             time.sleep(86400)
                             print("=== Hệ thống đã thức dậy! Đang thử lại câu hỏi vừa rồi... ===")
                         else:
-                            print(f"=== [Lỗi kết nối / Nghẽn phút]: {error} ===")
-                            print("=== Tạm nghỉ 60 giây để hệ thống hồi phục... ===")
+                            print(f"=== [Lỗi hệ thống / Ragas trả về NAN]: {error} ===")
+                            print("=== Tạm nghỉ 60 giây để làm sạch hàng đợi trước khi thử lại... ===")
                             time.sleep(60)
 
 def main():
@@ -386,12 +390,12 @@ def main():
     STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs.csv"
     FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_test.csv"
 
-    # 2. Khởi tạo đối tượng đánh giá# Đặt thời gian nghỉ lớn (15s) nếu bạn dùng tài khoản Gemini miễn phí (tránh lỗi 429 Resource Exhausted)
+    # 2. Khởi tạo đối tượng đánh giá
     evaluator = RagEvaluator(
         jsonl_path=INPUT_QUESTIONS_JSONL,
         metrics_log_file=STAGE1_SCREENING_LOGS,
         result_log_file=FINAL_RAGAS_REPORT,
-        delay_requests=15.0)
+        delay_requests=10.0)
     
     # 3. Kích hoạt tiến trình chạy tự động
     evaluator.run_evaluation()
