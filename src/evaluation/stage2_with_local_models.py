@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, math
 import time
 import json
 import pandas as pd
@@ -10,78 +10,97 @@ from ragas.llms import _LangchainLLMWrapper
 from ragas.embeddings.base import LangchainEmbeddingsWrapper
 from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
 
-from pathlib import Path
+
+"""
+IMPORTANT: TO AVOID RAGAS CRASHHING DUE TO MISSING MODULES,
+WE CREATE MOCK MODULES FOR IT. ONLY RUN IF YOU CANNOT SETUP RAGAS PROPERLY.
+"""
+'''
 import sys
+from types import ModuleType
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = PROJECT_ROOT / "src"
+mock_vertex_module = ModuleType("langchain_community.chat_models.vertexai")
+mock_vertex_module.ChatVertexAI = None  # Gán bằng None để Ragas không bị crash khi import
 
-sys.path.insert(0, str(SRC_ROOT))
+mock_llms_module = ModuleType("langchain_community.llms")
+mock_llms_module.VertexAI = None  # Gán bằng None dự phòng dòng tiếp theo của Ragas
 
+sys.modules["langchain_community.chat_models.vertexai"] = mock_vertex_module
+sys.modules["langchain_community.llms"] = mock_llms_module
+'''
+
+# Check if NLTK is installed and download 'punkt_tab' tokenizer if not present
+try:
+    import nltk
+    try:
+        nltk.data.find('tokenizers/punkt_tab')
+    except LookupError:
+        nltk.download('punkt_tab', quiet=True)
+except ImportError:
+    nltk = None
+
+
+# Evaluation with Local Ollama + Ollama Embeddings
+from langchain_ollama import ChatOllama
+from langchain_huggingface import HuggingFaceEmbeddings
+
+# Get current directory and src directory for module imports
+current_dir = os.path.dirname(os.path.abspath(__file__))  # path to src/evaluation/
+src_dir = os.path.dirname(current_dir)  # path to src/
+
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+
+# Import core modules for retrieval, query transformation, post-processing, caching, index manaagement
 from core.query_transforms import QueryTransformer
 from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
 from core.cache_manager import LocalCacheManager
 from core.index_manager import IndexManager
 
-'''
-Evaluation with GOOGLE GEMINI
-# THƯ VIỆN KẾT NỐI VỚI LOCAL OLLAMA VÀ GOOGLE GEMINI
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-'''
-
-'''
-Evaluation with GLM + Ollama Embeddings
-from langchain_openai import ChatOpenAI
-from langchain_ollama import OllamaEmbeddings
-'''
-
-'''
-Evaluation with Local Ollama + Ollama Embeddings
-'''
-from langchain_ollama import ChatOllama
-from langchain_ollama import OllamaEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
 
 class RagEvaluator:
     def __init__(
         self, 
-        jsonl_path: str = "data/processed/questions/questions.jsonl",
+        jsonl_path: str = "data/processed/questions/test_questions.jsonl",
         metrics_log_file: str = "reports/stage1_screening_logs.csv",
         result_log_file: str = "reports/ragas_evaluation_checkpoint_local.csv",
-        delay_requests: float = 12.0
+        delay_requests: float = 0 # 0 for local
     ):
         """
-        Khởi tạo bộ đánh giá RAG sử dụng Ragas và Google Gemini.
-        Tự động nạp cấu hình bí mật từ file .env
+        Initialize RAG evaluator using Ragas + Local Ollama.
         """
-        # Tải các biến môi trường từ file .env bí mật của bạn
-        load_dotenv()
-        
-        # Lấy trực tiếp từ file .env và gán vào biến hệ thống mà Ragas/Google yêu cầu
-        gemini_key = os.getenv("GOOGLE_GEMINI_API_KEY")
-        glm_key = os.getenv("GLM_API_KEY")
-        if not gemini_key:
-            raise ValueError("Lỗi: Không tìm thấy 'GOOGLE_GEMINI_API_KEY' trong file .env của bạn!")
-            
-        os.environ["GOOGLE_API_KEY"] = gemini_key
-        
-        # Cấu hình đường dẫn hệ thống
-        self.jsonl_path = jsonl_path
-        self.metrics_log_file = metrics_log_file
-        self.result_log_file = result_log_file
+
+        # Set up project root
+        project_root = os.path.dirname(src_dir)
+
+        # Set up paths for input and output files
+        self.jsonl_path = os.path.join(project_root, jsonl_path)
+        self.metrics_log_file = os.path.join(project_root, metrics_log_file)
+        self.result_log_file = os.path.join(project_root, result_log_file)
         self.delay_requests = delay_requests
-        
-        # Khởi tạo các mô hình và cấu hình Ragas
+
+        # Initialize ragas models and metrics
         self._init_models()
         self._setup_metrics()
 
-        # Khời tạo các phương thức retrieval
-        self.cache_manager = LocalCacheManager()
-        self.query_tf = QueryTransformer(self.cache_manager)
+        # Create cache and Query Transformer
+        cache_file_path = os.path.join(project_root, "data/pre_retrieval_cache.json")
+        self.cache_manager = LocalCacheManager(cache_path=cache_file_path)
+        self.query_tf = QueryTransformer(cache_manager=self.cache_manager)
 
+        # Initialize index manager and retriever
         self.index_manager = IndexManager()
-        self.retriever = ModularRetriever(self.index_manager) 
+        chroma_path = os.path.join(project_root, "data/processed/embeddings")
+        print("=== Đang kết nối và khởi tạo cấu trúc ChromaDB ===")
+        success = self.index_manager.init_chroma(path=chroma_path)
+        if not success:
+            print(f"=== Cảnh báo: Không thể khởi tạo ChromaDB tại {chroma_path}. Kiểm tra lại thư mục dữ liệu. ===")
+
+        self.retriever = ModularRetriever(index_manager=self.index_manager)
+
+        # Initialize post processor
         self.post_proc = PostProcessor()
 
     def _init_models(self):
@@ -89,37 +108,32 @@ class RagEvaluator:
         print("--- Khởi tạo mô hình Qwen chạy Local ---")
         self.qwen_llm = ChatOllama(model="qwen2.5:1.5b", temperature=0.2)
 
-        print("--- Khởi tạo mô hình Google Gemini cho Ragas ---")
-        # self.gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-        # self.gemini_emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+        print("--- Khởi tạo mô hình qwen3:8b cho Ragas ---")
 
-        # self.ragas_gemini_llm = _LangchainLLMWrapper(self.gemini_llm)
-        # self.ragas_gemini_emb = LangchainEmbeddingsWrapper(self.gemini_emb)
-
-        self.gemini_llm = ChatOllama(
+        self.eval_llm = ChatOllama(
             model="qwen3:8b",
             temperature=0
         )       
 
-        self.gemini_emb = HuggingFaceEmbeddings(
+        self.emb_model = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
-        self.ragas_gemini_llm = _LangchainLLMWrapper(self.gemini_llm)
-        self.ragas_gemini_emb = LangchainEmbeddingsWrapper(self.gemini_emb)
+        self.ragas_eval_llm = _LangchainLLMWrapper(self.eval_llm)
+        self.ragas_eval_emb = LangchainEmbeddingsWrapper(self.emb_model)
 
     def _setup_metrics(self):
         """Cấu hình các metric."""
         self.faithfulness = Faithfulness()
-        self.faithfulness.llm = self.ragas_gemini_llm
+        self.faithfulness.llm = self.ragas_eval_llm
 
         self.answer_relevancy = AnswerRelevancy()
-        self.answer_relevancy.llm = self.ragas_gemini_llm
-        self.answer_relevancy.embeddings = self.ragas_gemini_emb
+        self.answer_relevancy.llm = self.ragas_eval_llm
+        self.answer_relevancy.embeddings = self.ragas_eval_emb
 
         self.answer_correctness = AnswerCorrectness(
-            llm=self.ragas_gemini_llm,
-            embeddings=self.ragas_gemini_emb
+            llm=self.ragas_eval_llm,
+            embeddings=self.ragas_eval_emb
         )
 
         self.metrics = [
@@ -201,6 +215,28 @@ class RagEvaluator:
         # 5. Sinh câu trả lời bằng Qwen Local
         context_str = "\n".join(context_texts)
         prompt = f"Context:\n{context_str}\n\nQuestion: {question_text}\n\nAnswer:"
+
+        # prompt = prompt = f"""
+        #     You are a retrieval-grounded assistant.
+
+        #     Answer ONLY using the provided Context.
+
+        #     Rules:
+        #     - Every claim must be supported by Context.
+        #     - Do not use external knowledge.
+        #     - Do not speculate.
+        #     - If Context is insufficient, say so.
+        #     - Be concise.
+        #     - Answer the Question directly.
+
+        #     Context:
+        #     {context_str}
+
+        #     Question:
+        #     {question_text}
+
+        #     Answer:
+        #     """
         
         response = self.qwen_llm.invoke(prompt)
         generated_answer = response.content
@@ -231,29 +267,22 @@ class RagEvaluator:
             ])
             df_checkpoint.to_csv(self.result_log_file, index=False)
 
-        df_metrics = pd.read_csv(self.metrics_log_file)
-        unique_question_ids = df_metrics['question_id'].unique().tolist()
 
         # Duyệt qua từng cấu hình pipeline trong nhóm Top 5
         for config in top_5_pipelines:
             pipeline_id = config['pipeline_id']
             print(f"\n>>> ĐANG CHẠY EVALUATION CHO PIPELINE: {pipeline_id}")
             print(f"    [Cấu hình] Pre: {config['pre_retrieval']} | Retrieval: {config['retrieval']} | Chunking: {config['chunking']} | Post: {config['post_retrieval']}")
-            
-            for q_id in unique_question_ids:
+
+            for q_id, question_data in questions_pool.items():
                 is_evaluated = not df_checkpoint[
                     (df_checkpoint['pipeline_id'] == pipeline_id) & 
                     (df_checkpoint['question_id'] == q_id)
                 ].empty
-                
+
                 if is_evaluated:
                     continue
-                    
-                question_data = questions_pool.get(q_id)
-                if not question_data:
-                    print(f" -> Cảnh báo: Không tìm thấy ID {q_id} trong file JSONL.")
-                    continue
-                    
+
                 question_text = question_data["question"]
                 ground_truth_answer = question_data["ground_truth_answer"]
                 
@@ -276,15 +305,19 @@ class RagEvaluator:
                         score = evaluate(
                             dataset,
                             metrics=self.metrics,
-                            llm=self.ragas_gemini_llm,
-                            embeddings=self.ragas_gemini_emb,
+                            llm=self.ragas_eval_llm,
+                            embeddings=self.ragas_eval_emb,
                             run_config=config_ragas
                             )
-                        
+
                         df = score.to_pandas()
-                        f_score = float(df["faithfulness"].iloc[0]) if df["faithfulness"].iloc[0] != 'nan' else 0.0
-                        ar_score = float(df["answer_relevancy"].iloc[0]) if df["answer_relevancy"].iloc[0] != 'nan' else 0.0
-                        ac_score = float(df["answer_correctness"].iloc[0]) if df["answer_correctness"].iloc[0] != 'nan' else 0.0
+                        f_score = float(df["faithfulness"].iloc[0]) if not math.isnan(df["faithfulness"].iloc[0]) else 0.0
+                        ar_score = float(df["answer_relevancy"].iloc[0]) if not math.isnan(df["answer_relevancy"].iloc[0]) else 0.0
+                        ac_score = float(df["answer_correctness"].iloc[0]) if not math.isnan(df["answer_correctness"].iloc[0]) else 0.0
+
+                        # # Nếu tất cả các metric chính đều bị Ragas gán nhãn `nan` (do sập API ẩn bên trong)
+                        # if pd.isna(f_score) or pd.isna(ar_score) or pd.isna(ac_score):
+                        #     raise Exception("ragas_all_nan_error: Toàn bộ điểm số trả về bị NAN do nghẽn token hệ thống.")
 
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
@@ -318,13 +351,26 @@ class RagEvaluator:
                             print("Tạm nghỉ 60 giây để hệ thống hồi phục...")
                             time.sleep(60)
 
+def main():
+    print("=========================================================")
+    print("     EXECUTING RAG EVALUATION (RAGAS + LOCAL QWEN)       ")
+    print("=========================================================")
 
-if __name__ == "__main__":
+    # Declare paths for input and output files
+    INPUT_QUESTIONS_JSONL = "data/processed/questions/test_questions.jsonl"
+    STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs.csv"
+    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_local.csv"
+
+    # Initialize the evaluator with said paths
     evaluator = RagEvaluator(
-        jsonl_path="data/processed/questions/questions.jsonl",
-        metrics_log_file="reports/stage1_screening_logs.csv",
-        result_log_file="reports/ragas_evaluation_checkpoint_local.csv",
-        delay_requests=12.0
+        jsonl_path=INPUT_QUESTIONS_JSONL,
+        metrics_log_file=STAGE1_SCREENING_LOGS,
+        result_log_file=FINAL_RAGAS_REPORT,
+        delay_requests=0 # 0 for local
     )
 
+    # Execute the evalation process
     evaluator.run_evaluation()
+
+if __name__ == "__main__":
+    main()
