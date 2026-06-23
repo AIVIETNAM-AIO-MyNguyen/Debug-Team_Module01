@@ -59,6 +59,7 @@ from core.post_processors import PostProcessor
 from core.cache_manager import LocalCacheManager
 from core.index_manager import IndexManager
 
+from evaluation.stage2_deep_eval import Stage2GenerativeEvaluator
 
 class RagEvaluator:
     def __init__(
@@ -210,38 +211,41 @@ class RagEvaluator:
         # 4. Trích xuất nội dung văn bản làm ngữ cảnh nền
         context_texts = [res["metadata"]["text"] for res in processed if "metadata" in res and "text" in res["metadata"]]
         if not context_texts:
-            context_texts = ["Không tìm thấy ngữ cảnh phù hợp cho câu hỏi này."]
+            context_texts = ["Cannot find relevant context."]
 
         # 5. Sinh câu trả lời bằng Qwen Local
         context_str = "\n".join(context_texts)
-        prompt = f"Context:\n{context_str}\n\nQuestion: {question_text}\n\nAnswer:"
+        # prompt = f"Context:\n{context_str}\n\nQuestion: {question_text}\n\nAnswer:"
 
-        # prompt = prompt = f"""
-        #     You are a retrieval-grounded assistant.
+        # response = self.qwen_llm.invoke(prompt)
+        # generated_answer = response.content
+        return context_texts
 
-        #     Answer ONLY using the provided Context.
 
-        #     Rules:
-        #     - Every claim must be supported by Context.
-        #     - Do not use external knowledge.
-        #     - Do not speculate.
-        #     - If Context is insufficient, say so.
-        #     - Be concise.
-        #     - Answer the Question directly.
-
-        #     Context:
-        #     {context_str}
-
-        #     Question:
-        #     {question_text}
-
-        #     Answer:
-        #     """
-        
+    def judge_llm(self, prompt: str):
         response = self.qwen_llm.invoke(prompt)
-        generated_answer = response.content
-        
-        return generated_answer, context_texts
+
+        if hasattr(response, "content"):
+            return response.content
+
+        return str(response)
+
+    def generator_llm(self,prompt: str) -> str:
+        response = self.qwen_llm.invoke(prompt)
+
+        if hasattr(response, "content"):
+            return response.content
+
+        return str(response)
+
+    def judge_llm(self, prompt: str):
+        response = self.judge_model.invoke(prompt)
+
+        if hasattr(response, "content"):
+            return response.content
+
+        return str(response)
+
 
     def run_evaluation(self):
         """Tiến trình chạy đánh giá chính."""
@@ -267,6 +271,18 @@ class RagEvaluator:
             ])
             df_checkpoint.to_csv(self.result_log_file, index=False)
 
+        # Initizlize judge model for Ragas
+        self.judge_model = ChatOllama(
+            model="qwen3:8b",
+            temperature=0,
+            timeout=60
+        )
+
+        # Initialize generator model for Ragas using custom class
+        self.generative_evaluator = Stage2GenerativeEvaluator(
+            top_5_configs=top_5_pipelines,
+            judge_llm=self.judge_llm
+        )
 
         # Duyệt qua từng cấu hình pipeline trong nhóm Top 5
         for config in top_5_pipelines:
@@ -287,37 +303,32 @@ class RagEvaluator:
                 ground_truth_answer = question_data["ground_truth_answer"]
                 
                 print(f" -> Đang xử lý Câu hỏi ID: {q_id}")
-                
+
                 while True:
                     try:
                         # Truyền trực tiếp từ điển 'config' chứa đầy đủ thông tin hàng vào hàm pipeline
-                        answer, contexts = self.run_rag_pipeline(q_id, question_text, config)
-                        
+                        contexts = self.run_rag_pipeline(q_id, question_text, config)
+
+                        answer = self.generative_evaluator.compile_rag_response(
+                            question=question_text,
+                            contexts=contexts,
+                            generator_llm=self.generator_llm
+                        )
+
                         sample_data = {
                             "question": [question_text],
                             "contexts": [contexts],
                             "answer": [answer],
                             "ground_truth": [ground_truth_answer]
                         }
-                        dataset = Dataset.from_dict(sample_data)
-                        
-                        config_ragas = RunConfig(max_workers=1, timeout=180)
-                        score = evaluate(
-                            dataset,
-                            metrics=self.metrics,
-                            llm=self.ragas_eval_llm,
-                            embeddings=self.ragas_eval_emb,
-                            run_config=config_ragas
-                            )
 
-                        df = score.to_pandas()
-                        f_score = float(df["faithfulness"].iloc[0]) if not math.isnan(df["faithfulness"].iloc[0]) else 0.0
-                        ar_score = float(df["answer_relevancy"].iloc[0]) if not math.isnan(df["answer_relevancy"].iloc[0]) else 0.0
-                        ac_score = float(df["answer_correctness"].iloc[0]) if not math.isnan(df["answer_correctness"].iloc[0]) else 0.0
+                        score = self.generative_evaluator.execute_ragas_audit(
+                            sample_data
+                        )
 
-                        # # Nếu tất cả các metric chính đều bị Ragas gán nhãn `nan` (do sập API ẩn bên trong)
-                        # if pd.isna(f_score) or pd.isna(ar_score) or pd.isna(ac_score):
-                        #     raise Exception("ragas_all_nan_error: Toàn bộ điểm số trả về bị NAN do nghẽn token hệ thống.")
+                        f_score = score["faithfulness"]
+                        ar_score = score["answer_relevancy"]
+                        ac_score = score["answer_correctness"]
 
                         new_row = pd.DataFrame([{
                             "pipeline_id": pipeline_id,
