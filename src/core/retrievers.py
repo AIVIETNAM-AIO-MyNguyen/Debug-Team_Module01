@@ -71,8 +71,14 @@ class ModularRetriever:
             if col is not None:
                 all_raw_results = []
                 for q in queries:
-                    # Encode query using SentenceTransformer model
-                    q_emb = self.idx_mgr.model.encode([q])[0].tolist()
+                    # Encode query using SentenceTransformer model with caching
+                    q_emb = self.idx_mgr.query_embedding_cache.get(q)
+                    if q_emb is None:
+                        with self.idx_mgr.cache_lock:
+                            q_emb = self.idx_mgr.query_embedding_cache.get(q)
+                            if q_emb is None:
+                                q_emb = self.idx_mgr.model.encode([q])[0].tolist()
+                                self.idx_mgr.query_embedding_cache[q] = q_emb
                     q_res = col.query(query_embeddings=[q_emb], n_results=top_k)
                     
                     if q_res and q_res["ids"] and len(q_res["ids"]) > 0:

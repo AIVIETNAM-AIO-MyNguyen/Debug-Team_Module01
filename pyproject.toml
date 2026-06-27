@@ -1,0 +1,24 @@
+[project]
+name = "debug-team-module01"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "chromadb>=1.5.9",
+    "fastparquet>=2026.5.0",
+    "langchain-core>=1.4.8",
+    "langchain-experimental>=0.4.2",
+    "langchain-text-splitters>=1.1.2",
+    "matplotlib>=3.11.0",
+    "nltk>=3.9.4",
+    "numpy>=2.5.0",
+    "pandas>=3.0.3",
+    "python-dotenv>=1.2.2",
+    "requests>=2.34.2",
+    "scikit-learn>=1.9.0",
+    "sentence-transformers>=5.6.0",
+    "statsmodels>=0.14.6",
+    "torch>=2.12.1",
+    "tqdm>=4.68.3",
+]

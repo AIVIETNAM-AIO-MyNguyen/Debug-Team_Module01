@@ -20,7 +20,7 @@ from evaluation.stage1_screening import Stage1ScreeningEngine
 from analysis.statistical_analysis import StatisticalAnalyzer
 from evaluation.stage2_deep_eval import Stage2GenerativeEvaluator, Dataset
 
-from core.llm_client import PuterMiniMaxClient
+from core.llm_client import GroqClient, OllamaClient
 
 
 # Configure logging
@@ -53,8 +53,9 @@ class RAGBenchmarkSuite:
     
     def __init__(self, max_questions: int = 150, llm_client: Any = None):
         self.max_questions = max_questions
-        self.llm_client = llm_client or PuterMiniMaxClient()
+        self.llm_client = llm_client or OllamaClient()
         self.dataset = []
+        self.stage1_evaluation_dataset = []
         self.idx_mgr = IndexManager()
         self.chunker = DocumentChunker()
         self.cache_mgr = LocalCacheManager(cache_path="data/pre_retrieval_cache.json")
@@ -83,6 +84,11 @@ class RAGBenchmarkSuite:
             )
             
         logger.info(f"Loaded {len(self.dataset)} questions for benchmarking from '{questions_path}'.")
+        self.stage1_evaluation_dataset = [
+            q for q in self.dataset
+            if any(q.get("ground_truth_chunk_ids", {}).values())
+        ]
+        logger.info(f"Filtered to {len(self.stage1_evaluation_dataset)} stage 1 evaluation questions.")
 
     def build_indices(self):
         """Builds index database namespaces for all chunking and indexing strategies."""
@@ -200,7 +206,7 @@ class RAGBenchmarkSuite:
         self.query_tf = QueryTransformer(self.cache_mgr)
         self.retriever = ModularRetriever(self.idx_mgr)
 
-        screening_engine = Stage1ScreeningEngine(self.dataset, self.idx_mgr, self.query_tf, self.retriever, self.post_proc)
+        screening_engine = Stage1ScreeningEngine(self.stage1_evaluation_dataset, self.idx_mgr, self.query_tf, self.retriever, self.post_proc)
         self.screening_df = screening_engine.run_screening_sweep(valid_pipelines)
         
         os.makedirs("reports", exist_ok=True)
@@ -390,7 +396,7 @@ def main():
     suite.build_indices()
     suite.run_screening_sweep()
     suite.run_statistical_analysis()
-    # suite.run_deep_generative_eval()
+    # suite.run_deep_generative_eval() # stage 2
     
     logger.info("RAG Benchmarking Framework runs completed successfully!")
 
