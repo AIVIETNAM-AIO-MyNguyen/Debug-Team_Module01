@@ -1,5 +1,6 @@
 import re
 import math
+import threading
 from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -139,6 +140,10 @@ class IndexManager:
         self.chroma_client = None
         self.chroma_collections = {}
         self.model = None
+
+        # Thread-safe query embedding cache
+        self.query_embedding_cache: Dict[str, List[float]] = {}
+        self.cache_lock = threading.Lock()
 
     def init_chroma(self, path: str = "data/processed/embeddings") -> bool:
         """Initializes ChromaDB persistent client and sentence transformer model."""

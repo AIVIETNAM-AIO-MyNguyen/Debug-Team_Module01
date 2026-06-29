@@ -6,6 +6,8 @@ from core.index_manager import IndexManager
 from core.query_transforms import QueryTransformer
 from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -74,16 +76,9 @@ class Stage1ScreeningEngine:
         total_runs = len(pipelines) * len(self.dataset)
         
         logger.info(f"Starting Stage 1 sweep: {len(pipelines)} pipelines across {len(self.dataset)} questions ({total_runs} runs).")
-        
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        import os
 
-        # We can use ThreadPoolExecutor to parallelize processing of individual pipelines.
-        # Since retrieval operations are CPU-bound on TF-IDF/BM25 calculation or model encoding,
-        # but also involve list operations, we can utilize a reasonable number of threads.
-        # Max workers can be based on cpu count.
-        max_workers = min(32, (os.cpu_count() or 4) * 2)
-        logger.info(f"Running sweep with {max_workers} thread workers.")
+        max_workers = 1
+        logger.info(f"Running sweep with {max_workers} thread workers (sequential local execution).")
 
         def process_pipeline(pipeline: Dict[str, str]) -> List[Dict[str, Any]]:
             chunking = pipeline["chunking"]
@@ -136,26 +131,8 @@ class Stage1ScreeningEngine:
                 else:
                     processed_results = retrieved_results[:5]
                     
-                # Extract chunk IDs, mapping them to target ground truth IDs if the text matches
-                retrieved_ids = []
-                for res in processed_results:
-                    cid = res["metadata"]["chunk_id"]
-                    text = res["metadata"].get("text", "")
-                    
-                    matched_target_id = None
-                    for ctx_idx, ctx in enumerate(q_item.get("ground_truth_contexts", [])):
-                        # Check substring overlap or exact equality (normalized)
-                        clean_ctx = ctx.strip().lower()
-                        clean_text = text.strip().lower()
-                        if clean_ctx in clean_text or clean_text in clean_ctx:
-                            if ctx_idx < len(target_ids):
-                                matched_target_id = target_ids[ctx_idx]
-                                break
-                                
-                    if matched_target_id:
-                        retrieved_ids.append(matched_target_id)
-                    else:
-                        retrieved_ids.append(cid)
+                # Extract chunk IDs directly
+                retrieved_ids = [res["metadata"]["chunk_id"] for res in processed_results]
                 
                 # Calculate metrics
                 metrics = self.calculate_metrics(retrieved_ids, target_ids)
