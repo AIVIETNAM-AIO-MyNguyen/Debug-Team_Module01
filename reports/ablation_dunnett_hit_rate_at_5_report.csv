@@ -1,0 +1,11 @@
+factor,comparison_level,baseline_level,diff,pvalue,lower,upper,ablation_conclusion
+chunking,fixed_1024,fixed_512,0.026953124999999967,0.12554103979656595,-0.005356428217243768,0.0592626782172437,Không khác biệt (Không có ý nghĩa thống kê)
+chunking,recursive,fixed_512,0.029687499999999978,0.0799668172957978,-0.002622053217243757,0.06199705321724371,Không khác biệt (Không có ý nghĩa thống kê)
+chunking,semantic,fixed_512,-0.03164062500000003,0.0565649882401833,-0.06395017821724377,0.0006689282172437014,Không khác biệt (Không có ý nghĩa thống kê)
+pre_retrieval,query_rewrite,none,-0.048697916666666674,2.6899670561020272e-05,-0.07353418254361276,-0.02386165078972059,TỆ HƠN Baseline (Giảm 0.0487 điểm)
+pre_retrieval,hyde,none,-0.11861979166666664,0.0,-0.14638758107072158,-0.0908520022626117,TỆ HƠN Baseline (Giảm 0.1186 điểm)
+retrieval,sparse_bm25,dense_cosine,0.42773437500000006,0.0,0.40201267162686083,0.4534560783731393,TỐT HƠN Baseline (Tăng 0.4277 điểm)
+retrieval,hybrid_rrf,dense_cosine,0.36276041666666664,0.0,0.3397542257708967,0.3857666075624366,TỐT HƠN Baseline (Tăng 0.3628 điểm)
+index_structure,parent_document,flat,-0.09480794270833331,0.0,-0.11421066385737215,-0.07540522155929448,TỆ HƠN Baseline (Giảm 0.0948 điểm)
+post_retrieval,cross_encoder_rerank,none,-0.009521484375,0.5965923668607191,-0.03366153095140276,0.01461856220140276,Không khác biệt (Không có ý nghĩa thống kê)
+post_retrieval,contextual_compression,none,0.061767578125,7.156448125766879e-06,0.03220217988539664,0.09133297636460336,TỐT HƠN Baseline (Tăng 0.0618 điểm)

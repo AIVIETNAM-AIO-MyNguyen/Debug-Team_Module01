@@ -75,9 +75,9 @@ def run_multifactor_dunnett(csv_path, metric='recall_at_5'):
         plt.ylabel("Cấu hình thử nghiệm")
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(f"figures/dunnett_{factor}_ci.png")
+        plt.savefig(f"figures/dunnett_{metric}_{factor}_ci.png")
         plt.close()
-        print(f"  -> Đã lưu biểu đồ khoảng tin cậy: dunnett_{factor}_ci.png")
+        print(f"  -> Đã lưu biểu đồ khoảng tin cậy: dunnett_{metric}_{factor}_ci.png")
 
     # Gom toàn bộ báo cáo và xuất file CSV phục vụ cho việc làm Ablation Study
     if summary_frames:
@@ -93,7 +93,7 @@ def run_multifactor_dunnett(csv_path, metric='recall_at_5'):
                 
         final_report['ablation_conclusion'] = final_report.apply(determine_impact, axis=1)
         
-        output_csv = "reports/rag_ablation_dunnett_report.csv"
+        output_csv = f"reports/ablation_dunnett_{metric}_report.csv"
         final_report.to_csv(output_csv, index=False)
         print(f"\n[HOÀN THÀNH XUẤT SẮC]: Báo cáo Dunnett đã xuất ra tại: {output_csv}")
         return final_report
@@ -103,4 +103,7 @@ def run_multifactor_dunnett(csv_path, metric='recall_at_5'):
 
 if __name__ == "__main__":
     # Tự động trỏ thẳng tới file log sàng lọc của bạn
+    run_multifactor_dunnett('reports/stage1_screening_logs.csv', metric='hit_rate_at_5')
     run_multifactor_dunnett('reports/stage1_screening_logs.csv', metric='recall_at_5')
+    run_multifactor_dunnett('reports/stage1_screening_logs.csv', metric='mrr_at_5')
+    run_multifactor_dunnett('reports/stage1_screening_logs.csv', metric='ndcg_at_5')
