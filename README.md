@@ -96,6 +96,27 @@ After the main sweep completes, run the non-ANOVA custom analysis for Random For
 .\.venv\Scripts\python src/analysis/custom_analysis.py
 ```
 
+### 5. Run Stage 2 Deep Evaluation (with Local Models)
+After completing Stage 1 and ensuring you have generated `reports/stage1_screening_logs.csv`, you can run the Stage 2 deep evaluation using local LLMs via Ollama:
+1. Ensure Ollama is installed and running.
+2. Download the required Qwen models:
+   ```powershell
+   ollama pull qwen2.5:1.5b
+   ollama pull qwen2.5:7b     # Used as the judge evaluator (or any default local model configured in code)
+   ```
+3. Run the Stage 2 evaluation script:
+   ```powershell
+   .\.venv\Scripts\python src/evaluation/stage2_with_local_models.py
+   ```
+This will evaluate the top 5 pipeline configurations against the ground truth using RAGAS-style semantic metrics (Faithfulness, Answer Relevancy, Answer Correctness) and write the results to `reports/ragas_evaluation_checkpoint_local_90.csv`.
+
+### 6. Run Ablation Analysis (Optional)
+To perform Dunnett's statistical test and generate ablation study reports comparing configurations back to baseline controls:
+```powershell
+.\.venv\Scripts\python src/analysis/ablation_analysis.py
+```
+This will save the statistical reports to `reports/rag_ablation_dunnett_report.csv` and visualize the confidence intervals under `figures/`.
+
 
 ## 📈 System Outputs & Reports
 
@@ -110,6 +131,8 @@ After running the benchmarking suite, outputs are saved inside the `reports/` an
 *   📂 **`anova_explanation.md`**: Detailed narrative explanation of the ANOVA results and their interpretation.
 *   📂 **`pillar_analysis_summary.md`**: Text summary of performance by architecture pillars.
 *   📂 **`stage2_deep_eval_results.csv`**: RAGAS semantic audit scores (Faithfulness, Relevancy, Correctness) on the **Top 5** surfaced configurations.
+*   📂 **`ragas_evaluation_checkpoint_local_90.csv`**: RAGAS local evaluation checkpoint file from Ollama runs.
+*   📂 **`rag_ablation_dunnett_report.csv`**: Ablation study Dunnett test report comparing configurations back to baselines.
 *   📂 **`custom_analysis_report.md`**: Non-ANOVA custom analysis report with Random Forest sensitivity and top-10 rankings.
 
 ### Figures (`figures/`)
@@ -153,11 +176,6 @@ After running the benchmarking suite, outputs are saved inside the `reports/` an
 │   ├── core/
 │   │   ├── cache_manager.py               # Disk-backed LLM transformation cache
 │   │   ├── chunkers.py                    # Ingestion splitting logic
-│   │   ├── chunking_strategies/
-│   │   │   ├── fixed_512.py               # Fixed 512-token chunking strategy
-│   │   │   ├── fixed_1024.py              # Fixed 1024-token chunking strategy
-│   │   │   ├── recursive_character_splitter.py  # Recursive delimiter-based splitter
-│   │   │   └── semantic_chunking.py       # Cosine-distance semantic splitter
 │   │   ├── index_manager.py               # Chroma & local overlay index managers
 │   │   ├── llm_client.py                  # Groq & Ollama LLM client wrappers
 │   │   ├── post_processors.py             # Re-ranking & context compression
@@ -165,10 +183,11 @@ After running the benchmarking suite, outputs are saved inside the `reports/` an
 │   │   └── retrievers.py                  # Cosine, BM25, and RRF searchers
 │   ├── evaluation/
 │   │   ├── stage1_screening.py            # High-throughput screening suite
-│   │   └── stage2_deep_eval.py            # Generative RAGAS LLM-as-a-judge
+│   │   └── stage2_with_local_models.py    # Generative RAGAS audit with local models
 │   ├── analysis/
 │   │   ├── statistical_analysis.py        # Statsmodels ANOVA fitters & interaction plots
-│   │   └── custom_analysis.py             # Random Forest sensitivity & custom reports
+│   │   ├── custom_analysis.py             # Random Forest sensitivity & custom reports
+│   │   └── ablation_analysis.py           # Dunnett's test on screening logs
 │   └── rag_bench.py                       # Main orchestrator entry point
 ├── tests/
 │   └── mock_utils.py                      # Mock dataset generator & LLM response simulator

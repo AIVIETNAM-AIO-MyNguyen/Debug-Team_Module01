@@ -18,7 +18,7 @@ from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
 from evaluation.stage1_screening import Stage1ScreeningEngine
 from analysis.statistical_analysis import StatisticalAnalyzer
-from evaluation.stage2_deep_eval import Stage2GenerativeEvaluator, Dataset
+from evaluation.stage2_with_local_models import Stage2GenerativeEvaluator, Dataset
 
 from core.llm_client import GroqClient, OllamaClient
 

@@ -21,4 +21,7 @@ dependencies = [
     "statsmodels>=0.14.6",
     "torch>=2.12.1",
     "tqdm>=4.68.3",
+    "langchain-ollama>=0.2.0",
+    "langchain-huggingface>=0.1.2",
+    "datasets>=2.18.0",
 ]
