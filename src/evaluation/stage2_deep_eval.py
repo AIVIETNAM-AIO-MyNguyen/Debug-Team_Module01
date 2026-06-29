@@ -1,6 +1,7 @@
 import re
 import logging
 from typing import List, Dict, Any
+import time
 
 # Graceful import of datasets to avoid crashes if datasets package is not installed
 try:
@@ -84,7 +85,12 @@ class Stage2GenerativeEvaluator:
             f"Answer:\n{answer}\n\n"
             f"Faithfulness Score:"
         )
+        # Add time to check runtime of judge calls
+        start_f = time.time()
         resp = self.judge(prompt_f)
+        logger.info(
+            f"Faithfulness took {time.time() - start_f:.2f}s"
+        )
         try:
             scores["faithfulness"] = parse_score(resp)
         except Exception as e:
@@ -100,7 +106,12 @@ class Stage2GenerativeEvaluator:
             f"Answer:\n{answer}\n\n"
             f"Answer Relevancy Score:"
         )
+        # Add time to check runtime of judge calls
+        start_r= time.time()
         resp = self.judge(prompt_r)
+        logger.info(
+            f"Relevancy took {time.time() - start_r:.2f}s"
+        )
         try:
             scores["answer_relevancy"] = parse_score(resp)
         except Exception as e:
@@ -116,7 +127,12 @@ class Stage2GenerativeEvaluator:
             f"Generated Answer:\n{answer}\n\n"
             f"Answer Correctness Score:"
         )
+        # Add time to check runtime of judge calls
+        start_c =time.time()
         resp = self.judge(prompt_c)
+        logger.info(
+            f"Correctness took {time.time() - start_c:.2f}s"
+        )
         try:
             scores["answer_correctness"] = parse_score(resp)
         except Exception as e:
