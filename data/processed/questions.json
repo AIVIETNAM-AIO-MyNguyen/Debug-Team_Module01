@@ -1,0 +1,401 @@
+[
+  {
+    "id": "qst_0011",
+    "question": "How long is the validity period for the telemetry driven runbook author certification from the operator training bootcamp?",
+    "ground_truth_answer": "18 months",
+    "ground_truth_contexts": [
+      "The Telemetry-Driven Runbook Author (Redwood) certification is valid for 18 months. Certified operators must complete the refresher module and pass the practical re-evaluation before the expiration date to maintain active credentials. Failure to renew within this window requires repeating the full Operator Training Bootcamp."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_006"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_003"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_003"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_004"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0013",
+    "question": "What is the recommended two-stage process for rotating the signing credentials used by GPU image build and promotion pipelines, including how to cut over safely and roll back if something goes wrong?",
+    "ground_truth_answer": "The process uses a two-phase protocol: Phase A involves provisioning a new KMS key version, updating the signing alias, performing test signings, running shadow cross-account copies, and monitoring for 24 hours. Phase B is the atomic swap of the KMS alias, revoking old credentials, promoting a canary, and monitoring health, with rollback done by reverting the alias to the prior key.",
+    "ground_truth_contexts": [
+      "The recommended credential rotation uses a two-phase protocol: Phase A (Preflight/Shadow) and Phase B (Cutover/Promotion). This minimizes pipeline disruptions.",
+      "In Phase A, provision a new KMS key version and point the signing alias (kms/gpu-signer) to it in a shadow state. Keep the active pipeline on the old version.",
+      "In Phase A, run test signings and confirm the attestation service accepts the new signature structure without rejecting standard payloads.",
+      "In Phase A, perform a shadow cross-account copy using the ephemeral CI role and check that the target registry receives the attestation block cleanly.",
+      "In Phase A, monitor for about 24 hours (or three release windows) for pull or audit failures in shadow registries before initiating Phase B.",
+      "In Phase B, schedule a change window and atomically swap the KMS alias to the new version, cutting over active GPU build jobs.",
+      "After the Phase B swap, revoke short-lived CI credentials tied to the previous version to ensure absolute forward secrecy.",
+      "In Phase B, promote a canary image signed with the new key and watch canary health metrics for 2 hours.",
+      "If issues occur, roll back by reverting the alias to the prior key version.",
+      "After rollback, mark the new key version as revocation-pending for forensic review."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_012",
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_013",
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_014",
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_015"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_006",
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_007",
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_008"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_006",
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_007"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_008",
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_009",
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_010"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0014",
+    "question": "List all target endpoints configured for the Prometheus gateway.",
+    "ground_truth_answer": "gateway-int.prod.redwood.internal:9091\ngateway-ext.prod.redwood.internal:9092\ngateway-backup.prod.redwood.internal:9093",
+    "ground_truth_contexts": [
+      "Configured target endpoints for the Prometheus gateway: \n- gateway-int.prod.redwood.internal:9091 (Internal gateway metrics)\n- gateway-ext.prod.redwood.internal:9092 (External edge metrics)\n- gateway-backup.prod.redwood.internal:9093 (Failover secondary metrics)"
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_017"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_009"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_008"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_011"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0016",
+    "question": "What is the company policy for how long contractor access should last by default before it expires, according to the access and permissions playbook?",
+    "ground_truth_answer": "Contractor access is set to expire by default after 30 days unless renewed.",
+    "ground_truth_contexts": [
+      "Contractor access is set to expire by default after 30 days unless it is renewed. System permissions are audited automatically. Access requires a manager approval and security review for high risk roles."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_020"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_010"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_009"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_013"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0017",
+    "question": "Explain the logic behind the dynamic routing policy in APISIX.",
+    "ground_truth_answer": "APISIX dynamic routing rules are evaluated in memory using a radix tree matcher, selecting upstreams without needing a gateway proxy restart.",
+    "ground_truth_contexts": [
+      "Dynamic routing policies in APISIX evaluate routing rules in memory, using a radix tree matcher to select upstreams without restarting the gateway proxy. This allows near zero latency route updates."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_022"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_011"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_010"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_014"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0018",
+    "question": "What are the three environment tiers defined for database deployments?",
+    "ground_truth_answer": "1. Dev (non-replicated, isolated namespaces)\n2. Staging (multi-zone replication, mock keys)\n3. Production (multi-region replication, real KMS keys)",
+    "ground_truth_contexts": [
+      "Database deployments recognize three environment tiers:\n1. Dev (non-replicated, isolated namespaces)\n2. Staging (multi-zone replication, mock keys)\n3. Production (multi-region replication, real KMS keys)"
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_027"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_014"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_012"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_017"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0021",
+    "question": "What is the expected turnaround time for security to approve access to a high risk internal tool role in Redwood's tool access governance process?",
+    "ground_truth_answer": "48 hours",
+    "ground_truth_contexts": [
+      "For high-risk internal tool roles requiring security review in Redwood's tool access governance process, the SLA for security approval is 48 hours. If additional security posture verification is needed, the review can extend to 5 business days."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_034"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_017"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_015"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_022"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0022",
+    "question": "What is the recommended liability cap language in the procurement legal triage SOP for vendor contracts (including the key exceptions and how the cap amount is determined)?",
+    "ground_truth_answer": "The recommended language limits vendor liability to direct damages only. Key exceptions are willful misconduct, breach of confidentiality, and IP indemnification. The cap amount is determined as the greater of USD 1,000,000 or the fees paid in the trailing 12 months.",
+    "ground_truth_contexts": [
+      "The procurement legal triage SOP recommends limitation of liability language stating that liability is limited to direct damages only.",
+      "The key exceptions to the SOPs liability cap are willful misconduct and breach of confidentiality, which are uncapped, and IP indemnification.",
+      "The cap amount is determined as the greater of USD 1,000,000 or the fees paid in the trailing 12 months."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_036",
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_037",
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_038"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_018",
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_019"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_016",
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_017"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_023",
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_024"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0023",
+    "question": "What is the recommended SLA response time for Tier 1 customer-impact tickets according to the Redwood SLO definitions?",
+    "ground_truth_answer": "15 minutes",
+    "ground_truth_contexts": [
+      "SLA response time for Tier 1 customer-impact incidents is 15 minutes. Support leads are paged immediately. Root cause analysis must be delivered to the customer within 3 business days."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_041"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_021"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_018"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_026"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0025",
+    "question": "Detail the recommended network configurations for the public ingress controller in Redwood VPC.",
+    "ground_truth_answer": "Redwood VPC public ingress configurations require dual-zone ALB setup with TLS 1.3 only, and WAF rules enabled for OWASP Top 10.",
+    "ground_truth_contexts": [
+      "Redwood VPC public ingress configurations require: \n- Dual-zone ALB setup\n- TLS 1.3 only\n- WAF rules enabled for OWASP Top 10\n- Strict IP rate limiting (100 req/sec)"
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_045"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_023"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_020"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_028"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0026",
+    "question": "What is the recommended retention period for compliance logs in Redwood's audit policy?",
+    "ground_truth_answer": "7 years",
+    "ground_truth_contexts": [
+      "Compliance logs in Redwood's audit policy must be retained for 7 years. Logs are archived in S3 Glacier with object locking enabled to prevent tampering or accidental deletion."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_048"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_024"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_021"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_030"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0027",
+    "question": "Explain the incident escalation flow when an SLO degradation occurs in Production.",
+    "ground_truth_answer": "When an SLO degradation occurs in Production: \n1. Alert triggers page to SRE lead immediately\n2. Incident commander is assigned within 15 minutes\n3. Support and CS are notified if user visibility is Tier 1/2",
+    "ground_truth_contexts": [
+      "When an SLO degradation is detected in Production, an alert triggers a page to the on-call SRE lead. The incident commander is assigned within 15 minutes to coordinate triage and remediation."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_051"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_026"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_023"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_032"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0028",
+    "question": "What is the recommended encryption standard for data at rest in Redwood's storage policy?",
+    "ground_truth_answer": "AES-256",
+    "ground_truth_contexts": [
+      "All data at rest in Redwood's storage policy must be encrypted using AES-256. Keys are rotated annually using AWS KMS with automatic rotation enabled."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_054"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_027"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_024"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_034"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0029",
+    "question": "List the mandatory sections required in any postmortem report at Redwood.",
+    "ground_truth_answer": "Mandatory postmortem sections are: \n- Executive Summary\n- Timeline\n- Root Cause Analysis\n- Preventative Actions\n- Feedback and Lessons Learned",
+    "ground_truth_contexts": [
+      "Redwood postmortem templates require the following sections: \n- Incident Overview\n- Impact Summary\n- Timeline (events leading up to and during triage)\n- Root Cause Analysis\n- Corrective/Preventative Actions (with clear JIRA ownership)"
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_058"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_029"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_026"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_036"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  },
+  {
+    "id": "qst_0030",
+    "question": "What is the policy for how often database backup restores should be tested?",
+    "ground_truth_answer": "Quarterly",
+    "ground_truth_contexts": [
+      "Database backup restores must be tested quarterly. Backup restore runs are automated using an ephemeral sandbox database instance, validating check sums and row counts against production benchmarks."
+    ],
+    "ground_truth_chunk_ids": {
+      "fixed_512": [
+        "c_512_981f4a02-8105-4f9a-aaec-7887156eebc4_061"
+      ],
+      "fixed_1024": [
+        "c_1024_981f4a02-8105-4f9a-aaec-7887156eebc4_031"
+      ],
+      "recursive": [
+        "c_rec_981f4a02-8105-4f9a-aaec-7887156eebc4_028"
+      ],
+      "semantic": [
+        "c_sem_981f4a02-8105-4f9a-aaec-7887156eebc4_038"
+      ]
+    },
+    "source_document_ids": [
+      "981f4a02-8105-4f9a-aaec-7887156eebc4"
+    ]
+  }
+]
