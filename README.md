@@ -83,7 +83,7 @@ Runs the full end-to-end benchmarking suite (Stage 1 screening sweep, statistica
        uv run src/rag_bench.py --max-questions 3
        ```
    *   **Full Benchmark Sweep**:
-       Runs the benchmarking sweep on the full dataset (default: up to 150 questions):
+       Runs the benchmarking sweep on the full dataset (default: up to 94 questions):
        ```powershell
        uv run src/rag_bench.py
        ```

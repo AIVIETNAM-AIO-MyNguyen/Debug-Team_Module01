@@ -18,9 +18,9 @@ from core.retrievers import ModularRetriever
 from core.post_processors import PostProcessor
 from evaluation.stage1_screening import Stage1ScreeningEngine
 from analysis.statistical_analysis import StatisticalAnalyzer
-from evaluation.stage2_with_local_models import Stage2GenerativeEvaluator, Dataset
+from evaluation.stage2_with_local_models import Stage2GenerativeEvaluator, Dataset, RagEvaluator
 
-from core.llm_client import GroqClient, OllamaClient
+from core.llm_client import OllamaClient
 
 
 # Configure logging
@@ -32,6 +32,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("rag_bench")
+
+STAGE1_LOGS_PATH = "reports/stage1_screening_logs.csv"
 
 class PipelineValidator:
     """Enforces constraint policies to drop incompatible or redundant execution paths."""
@@ -210,21 +212,19 @@ class RAGBenchmarkSuite:
         self.screening_df = screening_engine.run_screening_sweep(valid_pipelines)
         
         os.makedirs("reports", exist_ok=True)
-        report_csv = "reports/stage1_screening_logs.csv"
-        self.screening_df.to_csv(report_csv, index=False)
-        logger.info(f"Stage 1 logs written to: {report_csv}")
+        self.screening_df.to_csv(STAGE1_LOGS_PATH, index=False)
+        logger.info(f"Stage 1 logs written to: {STAGE1_LOGS_PATH}")
         return self.screening_df
 
     def run_statistical_analysis(self):
         """Performs ANOVA calculations, creates plots, and outputs summary reports."""
-        report_csv = "reports/stage1_screening_logs.csv"
-        if not os.path.exists(report_csv):
-            logger.error(f"Cannot run statistical analysis, {report_csv} not found.")
+        if not os.path.exists(STAGE1_LOGS_PATH):
+            logger.error(f"Cannot run statistical analysis, {STAGE1_LOGS_PATH} not found.")
             return
 
         logger.info("Executing Multi-Factor ANOVA, interaction plots, and Pillar-level analysis...")
         try:
-            analyzer = StatisticalAnalyzer(report_csv)
+            analyzer = StatisticalAnalyzer(STAGE1_LOGS_PATH)
 
             # Main-effects ANOVA
             anova_table = analyzer.execute_five_way_anova()
@@ -396,7 +396,16 @@ def main():
     suite.build_indices()
     suite.run_screening_sweep()
     suite.run_statistical_analysis()
-    # suite.run_deep_generative_eval() # stage 2
+    
+    logger.info("Executing Stage 2: Deep Generative Review & Local RAGAS Audit...")
+    evaluator = RagEvaluator(
+        jsonl_path="data/processed/questions/questions.jsonl",
+        metrics_log_file=STAGE1_LOGS_PATH,
+        result_log_file="reports/ragas_evaluation_checkpoint_local_90_2.csv",
+        delay_requests=0,
+        max_questions=args.max_questions
+    )
+    evaluator.run_evaluation()
     
     logger.info("RAG Benchmarking Framework runs completed successfully!")
 

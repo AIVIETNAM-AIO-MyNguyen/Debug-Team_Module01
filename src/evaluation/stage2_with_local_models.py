@@ -205,7 +205,8 @@ class RagEvaluator:
         jsonl_path: str = "data/processed/questions/questions.jsonl",
         metrics_log_file: str = "reports/stage1_screening_logs.csv",
         result_log_file: str = "reports/ragas_evaluation_checkpoint_local_90.csv",
-        delay_requests: float = 0 # 0 for local
+        delay_requests: float = 0, # 0 for local
+        max_questions: int = None
     ):
         """
         Initialize RAG evaluator using Ragas + Local Ollama.
@@ -219,6 +220,7 @@ class RagEvaluator:
         self.metrics_log_file = os.path.join(project_root, metrics_log_file)
         self.result_log_file = os.path.join(project_root, result_log_file)
         self.delay_requests = delay_requests
+        self.max_questions = max_questions
 
         # Initialize models
         self._init_models()
@@ -235,6 +237,24 @@ class RagEvaluator:
         success = self.index_manager.init_chroma(path=chroma_path)
         if not success:
             print(f"=== Warning: Unable to initialize ChromaDB at {chroma_path}. Please check data directory. ===")
+        else:
+            print("=== Loading local index overlays from ChromaDB ===")
+            questions_pool = self._load_questions_from_jsonl()
+            questions_list = []
+            for q_id, q_data in questions_pool.items():
+                questions_list.append({
+                    "id": q_id,
+                    "question": q_data.get("question"),
+                    "ground_truth_answer": q_data.get("ground_truth_answer")
+                })
+            col_map = {
+                "fixed_512": "c_512",
+                "fixed_1024": "c_1024",
+                "recursive": "c_rec",
+                "semantic": "c_sem"
+            }
+            for strategy, col_name in col_map.items():
+                self.index_manager.load_indices_from_chroma(strategy, col_name, questions_list)
 
         self.retriever = ModularRetriever(index_manager=self.index_manager)
 
@@ -276,6 +296,8 @@ class RagEvaluator:
                             "question": data.get("question"),
                             "ground_truth_answer": data.get("ground_truth_answer")
                         }
+                        if self.max_questions is not None and len(questions_dict) >= self.max_questions:
+                            break
         return questions_dict
 
     def _get_top_5_pipelines_with_configs(self) -> list:
@@ -457,8 +479,8 @@ def main():
 
     # Declare paths for input and output files
     INPUT_QUESTIONS_JSONL = "data/processed/questions/questions.jsonl"
-    STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs.csv"
-    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_local_90.csv"
+    STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs_2.csv"
+    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_local_90_2.csv"
 
     # Initialize the evaluator with said paths
     evaluator = RagEvaluator(
