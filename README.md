@@ -68,52 +68,43 @@ pip install -r requirements.txt
 uv sync
 ```
 
-### 2. Configure API Token
-Create a `.env` file in the root directory (see `.env.example` for reference) and add your API token:
-```env
-# API Authentication Token
-PUTER_TOKEN=your_jwt_token_here
+### 2. Run the Benchmarking Suite
+Runs the full end-to-end benchmarking suite (Stage 1 screening sweep, statistical analysis, and Stage 2 deep generative review with local models):
+
+1. **Ensure Ollama is installed and running** with the required models pulled:
+   ```powershell
+   ollama pull qwen2.5:1.5b
+   ollama pull qwen3:8b       # Used as the judge evaluator (or configure custom model in code)
+   ```
+2. **Execute the Benchmarking Suite**:
+   *   **Fast Verification Run (Recommended for testing setup)**:
+       Runs the benchmarking sweep on a tiny subset of 3 questions to verify end-to-end execution:
+       ```powershell
+       uv run src/rag_bench.py --max-questions 3
+       ```
+   *   **Full Benchmark Sweep**:
+       Runs the benchmarking sweep on the full dataset (default: up to 150 questions):
+       ```powershell
+       uv run src/rag_bench.py
+       ```
+
+### 3. Run Stage 2 Deep Evaluation Independently (Optional)
+If you want to re-run only the Stage 2 deep evaluation using local LLMs:
+```powershell
+uv run src/evaluation/stage2_with_local_models.py
 ```
-
-### 3. Run the Benchmarking Suite
-You can customize the execution using the `--max-questions` argument:
-
-*   **Fast Verification Run (Recommended for testing setup)**:
-    Runs the benchmarking sweep on a tiny subset of 3 questions to verify end-to-end execution quickly:
-    ```powershell
-    .\.venv\Scripts\python src/rag_bench.py --max-questions 3
-    ```
-    
-*   **Full Benchmark Sweep**:
-    Runs the benchmarking sweep on the full dataset (default: up to 150 questions):
-    ```powershell
-    .\.venv\Scripts\python src/rag_bench.py
-    ```
+This will evaluate the top 5 pipeline configurations against the ground truth using RAGAS-style semantic metrics (Faithfulness, Answer Relevancy, Answer Correctness) and write the results to `reports/ragas_evaluation_checkpoint_local_90.csv`.
 
 ### 4. Run Custom Analysis (Optional)
 After the main sweep completes, run the non-ANOVA custom analysis for Random Forest sensitivity and interaction heatmaps:
 ```powershell
-.\.venv\Scripts\python src/analysis/custom_analysis.py
+uv run src/analysis/custom_analysis.py
 ```
 
-### 5. Run Stage 2 Deep Evaluation (with Local Models)
-After completing Stage 1 and ensuring you have generated `reports/stage1_screening_logs.csv`, you can run the Stage 2 deep evaluation using local LLMs via Ollama:
-1. Ensure Ollama is installed and running.
-2. Download the required Qwen models:
-   ```powershell
-   ollama pull qwen2.5:1.5b
-   ollama pull qwen2.5:7b     # Used as the judge evaluator (or any default local model configured in code)
-   ```
-3. Run the Stage 2 evaluation script:
-   ```powershell
-   .\.venv\Scripts\python src/evaluation/stage2_with_local_models.py
-   ```
-This will evaluate the top 5 pipeline configurations against the ground truth using RAGAS-style semantic metrics (Faithfulness, Answer Relevancy, Answer Correctness) and write the results to `reports/ragas_evaluation_checkpoint_local_90.csv`.
-
-### 6. Run Ablation Analysis (Optional)
+### 5. Run Ablation Analysis (Optional)
 To perform Dunnett's statistical test and generate ablation study reports comparing configurations back to baseline controls:
 ```powershell
-.\.venv\Scripts\python src/analysis/ablation_analysis.py
+uv run src/analysis/ablation_analysis.py
 ```
 This will save the statistical reports to `reports/rag_ablation_dunnett_report.csv` and visualize the confidence intervals under `figures/`.
 
@@ -193,8 +184,6 @@ After running the benchmarking suite, outputs are saved inside the `reports/` an
 │   └── mock_utils.py                      # Mock dataset generator & LLM response simulator
 ├── .env.example                           # Template for environment variables
 ├── implementation_plan.md                 # Project implementation plan & design notes
-├── inspect_mapped_questions.py            # Utility: inspect question-to-chunk mapping quality
-├── map_questions_to_chroma.py             # Utility: map ground truth questions to ChromaDB chunks
 ├── pyproject.toml                         # Project metadata & dependency specification (uv)
 ├── requirements.txt                       # Dependency specification (pip)
 └── README.md                              # Framework documentation
