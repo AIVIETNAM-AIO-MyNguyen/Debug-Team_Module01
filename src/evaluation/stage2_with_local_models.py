@@ -232,8 +232,22 @@ class RagEvaluator:
         self.index_manager = IndexManager()
         chroma_path = os.path.join(project_root, "data/processed/embeddings")
         print("=== Connecting and Initializing ChromaDB ===")
-        success = self.index_manager.init_chroma(path=chroma_path)
-        if not success:
+
+        if self.index_manager.init_chroma(chroma_path):
+            collection_map = {
+                "fixed_512": "c_512",
+                "fixed_1024": "c_1024",
+                "recursive": "c_rec",
+                "semantic": "c_sem",
+            }
+
+            for strategy, collection in collection_map.items():
+                self.index_manager.load_indices_from_chroma(
+                    strategy_name=strategy,
+                    collection_name=collection,
+                    #dataset=jsonl_path   # optional but recommended
+                )
+        else:
             print(f"=== Warning: Unable to initialize ChromaDB at {chroma_path}. Please check data directory. ===")
 
         self.retriever = ModularRetriever(index_manager=self.index_manager)
@@ -458,7 +472,7 @@ def main():
     # Declare paths for input and output files
     INPUT_QUESTIONS_JSONL = "data/processed/questions/questions.jsonl"
     STAGE1_SCREENING_LOGS = "reports/stage1_screening_logs.csv"
-    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_local_90.csv"
+    FINAL_RAGAS_REPORT    = "reports/ragas_evaluation_checkpoint_local_quick_test.csv"
 
     # Initialize the evaluator with said paths
     evaluator = RagEvaluator(
